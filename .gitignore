@@ -1,0 +1,14 @@
+# Build artifacts and local tooling
+node_modules/
+build/
+dist/
+.ide/
+.autorun/
+.preview.json
+
+# Signing keys - NEVER commit these
+sign/
+
+# OS noise
+Thumbs.db
+.DS_Store

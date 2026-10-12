@@ -1,0 +1,458 @@
+<template>
+  <div class="page">
+    <div class="hud">
+      <div class="hudline">
+        <text class="score">SCORE {{ scoreText }}</text>
+        <text class="best">BEST {{ bestText }}</text>
+      </div>
+      <text class="status">{{ statusText }}</text>
+    </div>
+
+    <div class="board" onclick="onBoardTap" ontouchstart="onBoardTap" onswipe="onSwipe">
+      <div class="row" for="{{ row in rows }}">
+        <div class="cell {{ cell.skin }}" for="{{ cell in row.cells }}"></div>
+      </div>
+    </div>
+
+    <div class="pad">
+      <div class="padrow">
+        <div class="btn btnup" onclick="onDirTap(0)" ontouchstart="onDirTap(0)">
+          <text class="btntxt">UP</text>
+        </div>
+      </div>
+      <div class="padrow">
+        <div class="btn" onclick="onDirTap(3)" ontouchstart="onDirTap(3)">
+          <text class="btntxt">L</text>
+        </div>
+        <div class="btn" onclick="onDirTap(2)" ontouchstart="onDirTap(2)">
+          <text class="btntxt">D</text>
+        </div>
+        <div class="btn" onclick="onDirTap(1)" ontouchstart="onDirTap(1)">
+          <text class="btntxt">R</text>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style>
+  .page {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    background-color: #080B14;
+  }
+
+  .hud {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 52px;
+    margin-top: 6px;
+  }
+
+  .hudline {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+  }
+
+  .score {
+    font-size: 22px;
+    font-weight: bold;
+    color: #6FE39B;
+    margin-right: 18px;
+  }
+
+  .best {
+    font-size: 22px;
+    color: #8FA3C8;
+  }
+
+  .status {
+    font-size: 15px;
+    color: #6E7F9E;
+    margin-top: 4px;
+  }
+
+  .board {
+    flex-direction: column;
+    width: 244px;
+    height: 244px;
+    margin-top: 6px;
+    background-color: #101728;
+    border-width: 2px;
+    border-color: #1E2A44;
+    border-radius: 6px;
+  }
+
+  .row {
+    flex-direction: row;
+  }
+
+  /**
+   * Geometry only - no color here, so no dynamic class can fight this one.
+   * Empty cells paint nothing at all: on a real watch every background +
+   * border rect is rasterized, and 100+ invisible boxes used to dominate the
+   * frame budget. The board background doubles as the grid color.
+   */
+  .cell {
+    width: 22px;
+    height: 22px;
+    margin: 1px;
+  }
+
+  .sk-empty {
+    background-color: transparent;
+    border-color: transparent;
+  }
+
+  .sk-body {
+    background-color: #3FD98A;
+    border-width: 1px;
+    border-color: #3FD98A;
+    border-radius: 3px;
+  }
+
+  .sk-head {
+    background-color: #C6FF5C;
+    border-width: 1px;
+    border-color: #C6FF5C;
+    border-radius: 3px;
+  }
+
+  .sk-food {
+    background-color: #FF6B6B;
+    border-width: 1px;
+    border-color: #FF6B6B;
+    border-radius: 3px;
+  }
+
+  .pad {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .padrow {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .btn {
+    width: 92px;
+    height: 58px;
+    margin-left: 3px;
+    margin-right: 3px;
+    justify-content: center;
+    align-items: center;
+    background-color: #1B2645;
+    border-width: 2px;
+    border-color: #2E3F6B;
+    border-radius: 10px;
+  }
+
+  .btnup {
+    width: 110px;
+    height: 58px;
+  }
+
+  .btntxt {
+    font-size: 20px;
+    font-weight: bold;
+    color: #9FB6E8;
+  }
+</style>
+
+<script>
+  import {
+    STATE_READY,
+    STATE_RUNNING,
+    STATE_OVER,
+    TICK_MS,
+    MIN_TICK_MS,
+    SPEED_STEP,
+    MAX_CATCHUP,
+    INPUT_GUARD_MS,
+    FIRST_TICK_MS
+  } from '../../common/constants.js'
+  import { clamp, swipeToDir } from '../../common/utils.js'
+  import {
+    createGame,
+    turn,
+    step,
+    createRows,
+    paintRows
+  } from '../../model/snake.js'
+
+  export default {
+    data: {
+      rows: [],
+      scoreText: '0',
+      bestText: '0',
+      statusText: '',
+      state: STATE_READY,
+      timerMode: 'timeout',
+      game: null,
+      speed: TICK_MS,
+      best: 0,
+      lastAt: 0,
+      lastDir: -1,
+      lastInputAt: 0,
+      tickHandle: 0
+    },
+
+    onInit() {
+      // One closure for the whole page lifetime instead of one per tick.
+      const self = this
+      this._tickFn = function () {
+        self._tick()
+      }
+      this.timerMode = this._detectTimer()
+      console.info('[snake] timer mode: ' + this.timerMode)
+      this._resetGame()
+    },
+
+    onHide() {
+      // No background loop on a watch: freeze in place, the board is kept so a
+      // tap resumes the very same game.
+      if (this.state === STATE_RUNNING) {
+        this.state = STATE_READY
+        this._stopTimer()
+        this.statusText = 'PAUSED - TAP BOARD'
+      }
+    },
+
+    onDestroy() {
+      this._stopTimer()
+    },
+
+    /**
+     * The page sandbox is not guaranteed to expose a timer at all, and a snake
+     * that never advances is exactly the "installed it and nothing moves"
+     * failure. Probe for one instead of assuming.
+     */
+    _detectTimer() {
+      if (typeof setTimeout === 'function') {
+        return 'timeout'
+      }
+      if (typeof setInterval === 'function') {
+        return 'interval'
+      }
+      if (typeof requestAnimationFrame === 'function') {
+        return 'raf'
+      }
+      return 'none'
+    },
+
+    _resetGame() {
+      const game = createGame()
+      this.game = game
+      // The board divs are built once and repainted from then on. Replacing
+      // this array every tick used to allocate 156 objects per move, which is
+      // what the watch spends its garbage collection budget on.
+      if (!this.rows || this.rows.length === 0) {
+        this.rows = createRows()
+      }
+      paintRows(this.rows, game)
+      this.state = STATE_READY
+      this.speed = TICK_MS
+      this.lastAt = 0
+      this.lastDir = -1
+      this.lastInputAt = 0
+      this.scoreText = '0'
+      this.bestText = String(this.best)
+      this.statusText =
+        this.timerMode === 'none' ? 'STEP MODE - USE PAD' : 'TAP BOARD TO START'
+    },
+
+    _startGame() {
+      if (this.state === STATE_RUNNING) {
+        return
+      }
+      if (this.state === STATE_OVER) {
+        this._resetGame()
+      }
+      this.state = STATE_RUNNING
+      this.lastAt = Date.now()
+      this.statusText =
+        this.timerMode === 'none' ? 'STEP MODE - USE PAD' : 'SWIPE OR USE PAD'
+      // First step lands quickly so the game visibly reacts to the start tap
+      // instead of sitting still for a full tick. Later steps fall back to
+      // the normal cadence because _applySteps resets the wall clock.
+      this._schedule(FIRST_TICK_MS)
+    },
+
+    _schedule(fastMs) {
+      if (this.state !== STATE_RUNNING) {
+        return
+      }
+      if (this.timerMode === 'timeout') {
+        this.tickHandle = setTimeout(this._tickFn, fastMs || this.speed)
+      } else if (this.timerMode === 'interval') {
+        if (this.tickHandle) {
+          return
+        }
+        this.tickHandle = setInterval(this._tickFn, 80)
+      } else if (this.timerMode === 'raf') {
+        requestAnimationFrame(this._tickFn)
+      }
+    },
+
+    _stopTimer() {
+      if (this.timerMode === 'interval' && this.tickHandle) {
+        if (typeof clearInterval === 'function') {
+          clearInterval(this.tickHandle)
+        }
+        this.tickHandle = 0
+      } else if (this.timerMode === 'timeout' && this.tickHandle) {
+        if (typeof clearTimeout === 'function') {
+          clearTimeout(this.tickHandle)
+        }
+        this.tickHandle = 0
+      }
+    },
+
+    /**
+     * Steps are derived from the wall clock rather than from the callback
+     * itself, so a late or dropped callback only delays the snake instead of
+     * slowing it down. MAX_CATCHUP keeps a long stall from teleporting the
+     * head across the board.
+     */
+    _tick() {
+      if (this.state !== STATE_RUNNING) {
+        return
+      }
+      const now = Date.now()
+      if (!this.lastAt) {
+        this.lastAt = now
+      }
+      const gap = now - this.lastAt
+      if (
+        (this.timerMode === 'raf' || this.timerMode === 'interval') &&
+        gap < this.speed
+      ) {
+        this._schedule()
+        return
+      }
+
+      let steps = Math.floor(gap / this.speed)
+      if (steps < 1) {
+        steps = 1
+      }
+      if (steps > MAX_CATCHUP) {
+        steps = MAX_CATCHUP
+      }
+      this._applySteps(steps, now)
+    },
+
+    _applySteps(steps, now) {
+      let result = null
+      for (let i = 0; i < steps; i++) {
+        result = step(this.game)
+        if (result.dead || this.game.won) {
+          break
+        }
+      }
+      this.lastAt = now
+      this._afterMove(result)
+    },
+
+    _afterMove(result) {
+      const game = this.game
+      paintRows(this.rows, game)
+      const score = String(game.eaten)
+      if (score !== this.scoreText) {
+        this.scoreText = score
+      }
+      if (game.eaten > this.best) {
+        this.best = game.eaten
+        this.bestText = String(this.best)
+      }
+
+      if (!game.alive || game.won) {
+        this.state = STATE_OVER
+        this._stopTimer()
+        this.statusText = game.won ? 'YOU WIN - TAP BOARD' : 'GAME OVER - TAP BOARD'
+        return
+      }
+
+      if (result && result.ate) {
+        this.speed = clamp(this.speed - SPEED_STEP, MIN_TICK_MS, TICK_MS)
+      }
+      this._schedule()
+    },
+
+    /**
+     * One entry point for both input paths. The guard only suppresses a repeat
+     * of the *same* direction, so two quick different turns in one tick still
+     * both land through the queued turn.
+     *
+     * Responsiveness: a queued turn only becomes visible at the next step, so
+     * in the back half of the current interval the step is pulled forward to
+     * right now. Worst-case perceived delay drops from a full tick to half a
+     * tick, and mashing can at most double the pace briefly because every
+     * pulled-forward step resets the wall clock.
+     */
+    _input(dir) {
+      if (dir < 0 || !this.game) {
+        return
+      }
+      const now = Date.now()
+      if (dir === this.lastDir && now - this.lastInputAt < INPUT_GUARD_MS) {
+        return
+      }
+      this.lastInputAt = now
+      this.lastDir = dir
+
+      if (this.state !== STATE_RUNNING) {
+        this._startGame()
+      }
+      if (this.state !== STATE_RUNNING) {
+        return
+      }
+      const turned = turn(this.game, dir)
+      if (
+        turned &&
+        this.timerMode !== 'none' &&
+        now - this.lastAt >= this.speed / 2
+      ) {
+        if (this.timerMode === 'timeout' && this.tickHandle) {
+          clearTimeout(this.tickHandle)
+          this.tickHandle = 0
+        }
+        this._applySteps(1, now)
+        return
+      }
+
+      // Without any timer the snake only advances when the player asks for it.
+      if (this.timerMode === 'none') {
+        this._tick()
+      }
+    },
+
+    onDirTap(dir) {
+      this._input(typeof dir === 'number' ? dir : -1)
+    },
+
+    onBoardTap() {
+      if (this.state === STATE_RUNNING) {
+        return
+      }
+      this._startGame()
+    },
+
+    onSwipe(evt) {
+      const raw = evt ? evt.direction : ''
+      this._input(swipeToDir(raw))
+    }
+  }
+</script>

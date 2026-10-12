@@ -1,0 +1,6 @@
+{
+  "name": "snake-blueos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Snake for vivo BlueOS watch, ported from patorjk/JavaScript-Snake"
+}

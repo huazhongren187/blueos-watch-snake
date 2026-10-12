@@ -1,0 +1,39 @@
+<template>
+  <!-- Application shell: every page is mounted through this slot. -->
+  <div class="app">
+    <slot></slot>
+  </div>
+</template>
+
+<style>
+  .app {
+    width: 100%;
+    height: 100%;
+    background-color: #080B14;
+  }
+</style>
+
+<script>
+  /**
+   * Application entry. Global lifecycle only - no game logic lives here.
+   *
+   * onError is the one hook worth keeping: on a real watch there is no console
+   * to look at, but every uncaught error is written to the Studio log
+   * (project.log) under the [snake] tag, so a device-only failure can still be
+   * diagnosed after the fact.
+   */
+  export default {
+    onCreate() {
+      console.info('[snake] app onCreate')
+    },
+
+    onError(err) {
+      const detail = err && err.message ? err.message : err
+      console.error('[snake] app error: ' + detail)
+    },
+
+    onDestroy() {
+      console.info('[snake] app onDestroy')
+    }
+  }
+</script>

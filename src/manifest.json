@@ -1,0 +1,30 @@
+{
+  "package": "com.example.snake",
+  "name": "Snake",
+  "icon": "/assets/images/logo.png",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "deviceTypeList": [
+    "watch",
+    "watch-round",
+    "watch-square"
+  ],
+  "appCategory": [
+    "games"
+  ],
+  "config": {
+    "designWidth": 466,
+    "logLevel": "debug"
+  },
+  "display": {
+    "backgroundColor": "#080B14"
+  },
+  "router": {
+    "entry": "pages/Snake",
+    "pages": {
+      "pages/Snake": {
+        "component": "index"
+      }
+    }
+  }
+}
