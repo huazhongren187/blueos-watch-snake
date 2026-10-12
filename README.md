@@ -16,6 +16,8 @@ round/square watch screen.
 | --- | --- |
 | ![real device](docs/screenshot-real-gt2.jpg) | ![simulator](docs/screenshot-simulator-round.png) |
 
+真机运行视频：[docs/demo-real-device.mp4](docs/demo-real-device.mp4)
+
 ## Features / 特性
 
 - **双输入保险**：屏幕下方十字方向键（`onclick` + `ontouchstart` 双绑）+ 棋盘滑动手势，滑动失效也能玩。
